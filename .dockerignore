@@ -1,0 +1,18 @@
+# Keep the image small and — critically — keep secrets out of it.
+.env
+.env.local
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Dev / repo cruft not needed at runtime.
+.git/
+.gitignore
+docs/
+README.md
+fly.toml
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

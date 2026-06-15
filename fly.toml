@@ -1,0 +1,18 @@
+# Fly.io configuration. `fly launch` may adjust `app` / `primary_region`
+# to a globally-unique name and your nearest region — that's expected.
+
+app = "multi-llm-chat"
+primary_region = "iad"  # Ashburn, US East. Change to your nearest region if you like.
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0  # scales to zero when idle (free-tier friendly)
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
