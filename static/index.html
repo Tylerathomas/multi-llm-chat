@@ -796,7 +796,7 @@
       <form id="form" class="prompt-row">
         <textarea
           id="prompt"
-          placeholder="Ask anything — Ctrl+Enter to send"
+          placeholder="Ask anything — Enter to send, Shift+Enter for new line"
           rows="1"
           required
         ></textarea>
@@ -1690,7 +1690,7 @@
         } else {
           submitBtn.classList.remove("stopping");
           submitBtn.innerHTML = SEND_LABEL;
-          submitBtn.title = "Send (Ctrl+Enter)";
+          submitBtn.title = "Send (Enter)";
         }
       }
 
@@ -1781,9 +1781,10 @@
         }
       });
 
-      // Ctrl/Cmd+Enter to submit.
+      // Enter to submit; Shift+Enter for a newline.
       promptEl.addEventListener("keydown", (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+          e.preventDefault();
           form.requestSubmit();
         }
       });
