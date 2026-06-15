@@ -1,0 +1,1824 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Multi-LLM Chat</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked@14.1.3/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --bg: #0b0d12;
+        --bg-elevated: #11141b;
+        --panel: #171b25;
+        --panel-2: #1d2230;
+        --border: #262b38;
+        --border-strong: #353a4a;
+        --text: #ebedf3;
+        --muted: #8a91a4;
+        --accent: #7aa2f7;
+        --accent-2: #bb9af7;
+        --user: #9ece6a;
+        --err: #f7768e;
+        --ok: #9ece6a;
+
+        --chatgpt: #10a37f;
+        --claude: #d97757;
+        --grok: #d4d4dc;
+        --gemini-1: #4285f4;
+        --gemini-2: #9b6dff;
+        --summary-1: #bb9af7;
+        --summary-2: #7aa2f7;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-feature-settings: "cv11", "ss01", "ss03"; /* Inter alt glyphs */
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      body::before {
+        /* very subtle radial glow at the top of the page for depth */
+        content: "";
+        position: fixed;
+        top: -200px; left: 50%;
+        transform: translateX(-50%);
+        width: 1200px; height: 500px;
+        background: radial-gradient(
+          ellipse at center,
+          rgba(122, 162, 247, 0.06) 0%,
+          rgba(122, 162, 247, 0) 60%
+        );
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      header {
+        padding: 14px 24px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        position: sticky;
+        top: 0;
+        background: rgba(11, 13, 18, 0.85);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        z-index: 10;
+      }
+      header .logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        font-size: 16px;
+        letter-spacing: -0.01em;
+      }
+      header .logo-mark {
+        display: inline-grid;
+        place-items: center;
+        width: 28px; height: 28px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #0b0d12;
+        font-weight: 800;
+        font-size: 14px;
+        box-shadow: 0 2px 8px rgba(122, 162, 247, 0.3);
+      }
+      header .sub {
+        color: var(--muted);
+        font-size: 12px;
+        flex: 1;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+      }
+      header .new-btn {
+        background: transparent;
+        color: var(--muted);
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        padding: 7px 12px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      header .new-btn:hover {
+        color: var(--text);
+        border-color: var(--accent);
+        background: var(--panel);
+      }
+      header .total-badge {
+        font-size: 12px;
+        color: var(--muted);
+        padding: 5px 12px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        font-variant-numeric: tabular-nums;
+        font-weight: 500;
+      }
+      header .total-badge .amount {
+        color: var(--text);
+        font-weight: 600;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+      }
+
+      /* App layout: sidebar + main */
+      .app {
+        display: flex;
+        align-items: stretch;
+        min-height: calc(100vh - 65px); /* full viewport minus header */
+        position: relative;
+        z-index: 1;
+      }
+      .sidebar {
+        width: 260px;
+        flex-shrink: 0;
+        border-right: 1px solid var(--border);
+        background: var(--bg-elevated);
+        padding: 16px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        position: sticky;
+        top: 65px;
+        align-self: flex-start;
+        height: calc(100vh - 65px);
+        overflow-y: auto;
+      }
+      .sidebar .new-conv-btn {
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #0b0d12;
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font: inherit;
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+        margin-bottom: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(122, 162, 247, 0.2);
+        transition: transform 0.1s ease, box-shadow 0.15s ease;
+      }
+      .sidebar .new-conv-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(122, 162, 247, 0.3);
+      }
+      .sidebar .sidebar-section {
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+        padding: 8px 8px 6px;
+      }
+      .conv-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        overflow-y: auto;
+      }
+      .conv-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 10px;
+        border-radius: 7px;
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 13px;
+        transition: all 0.12s ease;
+        position: relative;
+      }
+      .conv-item:hover {
+        background: var(--panel);
+        color: var(--text);
+      }
+      .conv-item.active {
+        background: var(--panel-2);
+        color: var(--text);
+      }
+      .conv-item .conv-title {
+        flex: 1;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        font-weight: 500;
+      }
+      .conv-item .conv-actions {
+        display: none;
+        gap: 2px;
+        flex-shrink: 0;
+      }
+      .conv-item:hover .conv-actions,
+      .conv-item.active .conv-actions {
+        display: inline-flex;
+      }
+      .conv-item .icon-btn {
+        background: transparent;
+        border: 0;
+        color: var(--muted);
+        cursor: pointer;
+        width: 22px; height: 22px;
+        border-radius: 5px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .conv-item .icon-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+      .conv-item .icon-btn.danger:hover { color: var(--err); }
+      .conv-item .icon-btn svg { width: 13px; height: 13px; }
+      .conv-empty {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+        padding: 20px 12px;
+        font-style: italic;
+      }
+
+      main {
+        flex: 1;
+        min-width: 0;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 28px 24px 220px;
+        position: relative;
+      }
+
+      /* Sticky bottom input bar — sits to the right of the sidebar on desktop */
+      .prompt-bar {
+        position: fixed;
+        bottom: 0;
+        left: 260px;
+        right: 0;
+        background: linear-gradient(
+          to bottom,
+          rgba(11, 13, 18, 0) 0%,
+          rgba(11, 13, 18, 0.85) 30%,
+          var(--bg) 70%
+        );
+        padding: 28px 24px 20px;
+        z-index: 20;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
+      .prompt-row {
+        max-width: 1100px;
+        margin: 0 auto;
+        display: flex;
+        gap: 10px;
+      }
+      textarea {
+        flex: 1;
+        min-height: 56px;
+        max-height: 200px;
+        background: var(--panel);
+        border: 1px solid var(--border-strong);
+        border-radius: 12px;
+        color: var(--text);
+        padding: 16px 16px;
+        font: inherit;
+        font-size: 14px;
+        line-height: 1.5;
+        resize: none;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      textarea::placeholder { color: var(--muted); }
+      textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5),
+                    0 0 0 3px rgba(122, 162, 247, 0.15);
+      }
+      button.send {
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #0b0d12;
+        border: 0;
+        border-radius: 12px;
+        padding: 0 22px;
+        font: inherit;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        align-self: stretch;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5),
+                    0 0 20px rgba(122, 162, 247, 0.2);
+        transition: transform 0.1s ease, box-shadow 0.15s ease;
+      }
+      button.send:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6),
+                    0 0 24px rgba(122, 162, 247, 0.35);
+      }
+      button.send:active:not(:disabled) { transform: translateY(0); }
+      button.send:disabled { opacity: 0.5; cursor: progress; }
+      button.send svg {
+        width: 14px; height: 14px;
+        margin-left: 2px;
+      }
+      /* Stop variant while streaming */
+      button.send.stopping {
+        background: linear-gradient(135deg, #f7768e, #e57878);
+        color: #fff;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5),
+                    0 0 20px rgba(247, 118, 142, 0.25);
+      }
+      button.send.stopping:hover:not(:disabled) {
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6),
+                    0 0 24px rgba(247, 118, 142, 0.4);
+      }
+
+      /* Per-conversation system prompt bar */
+      .system-bar {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        margin-bottom: 20px;
+        font-size: 13px;
+        color: var(--text);
+        overflow: hidden;
+        transition: border-color 0.15s ease;
+      }
+      .system-bar.has-prompt { border-color: rgba(187, 154, 247, 0.3); }
+      .system-display {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        cursor: pointer;
+      }
+      .system-display:hover { background: rgba(255,255,255,0.02); }
+      .system-icon {
+        color: var(--accent-2);
+        font-weight: 700;
+        font-size: 14px;
+        flex-shrink: 0;
+      }
+      .system-text {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--text);
+      }
+      .system-text.empty { color: var(--muted); font-style: italic; font-weight: normal; }
+      .system-edit-form { padding: 14px; }
+      .system-edit-form textarea {
+        width: 100%;
+        min-height: 90px;
+        max-height: 240px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        color: var(--text);
+        padding: 10px 12px;
+        font: inherit;
+        font-size: 13px;
+        line-height: 1.5;
+        resize: vertical;
+        box-shadow: none;
+      }
+      .system-edit-form textarea:focus {
+        outline: none;
+        border-color: var(--accent-2);
+        box-shadow: 0 0 0 3px rgba(187, 154, 247, 0.15);
+      }
+      .system-edit-form .hint {
+        color: var(--muted);
+        font-size: 11px;
+        margin: 6px 2px 0;
+      }
+      .system-edit-form .actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .system-edit-form button {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border-strong);
+        border-radius: 6px;
+        padding: 6px 14px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.12s ease;
+      }
+      .system-edit-form button:hover:not(:disabled) {
+        background: var(--panel-2);
+        border-color: var(--accent-2);
+      }
+      .system-edit-form button.primary {
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #0b0d12;
+        border-color: transparent;
+        font-weight: 600;
+      }
+      .system-edit-form button.danger:hover {
+        border-color: var(--err);
+        color: var(--err);
+      }
+
+      /* Conversation turns */
+      .turn {
+        margin-bottom: 32px;
+        padding-top: 24px;
+        animation: fadeInUp 0.3s ease;
+      }
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .turn + .turn { border-top: 1px solid var(--border); }
+      .turn.past { opacity: 0.55; transition: opacity 0.3s ease; }
+      .turn.past:hover { opacity: 1; }
+
+      .user-bubble {
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--user);
+        border-radius: 10px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        font-size: 14px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+      .user-bubble .label {
+        color: var(--user);
+        font-weight: 600;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+        display: block;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin-bottom: 14px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        min-height: 100px;
+        position: relative;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      .card::before {
+        /* color accent strip at the top of every card */
+        content: "";
+        position: absolute;
+        top: -1px; left: 16px; right: 16px;
+        height: 2px;
+        border-radius: 0 0 2px 2px;
+        background: var(--card-accent, var(--accent));
+        opacity: 0.7;
+      }
+      .card.model-chatgpt { --card-accent: var(--chatgpt); }
+      .card.model-claude  { --card-accent: var(--claude); }
+      .card.model-grok    { --card-accent: var(--grok); }
+      .card.model-gemini  { --card-accent: linear-gradient(90deg, var(--gemini-1), var(--gemini-2)); }
+      .card.summary       { --card-accent: linear-gradient(90deg, var(--summary-1), var(--summary-2)); }
+      .card.model-gemini::before,
+      .card.summary::before { background: var(--card-accent); }
+
+      .card.streaming {
+        border-color: var(--border-strong);
+        box-shadow: 0 0 0 1px rgba(122, 162, 247, 0.1),
+                    0 4px 20px rgba(0, 0, 0, 0.3);
+      }
+      .card.streaming::after {
+        /* soft pulsing glow on streaming card */
+        content: "";
+        position: absolute;
+        inset: -1px;
+        border-radius: 12px;
+        background: var(--card-accent, var(--accent));
+        opacity: 0;
+        animation: streamPulse 2s ease-in-out infinite;
+        pointer-events: none;
+        z-index: -1;
+      }
+      @keyframes streamPulse {
+        0%, 100% { opacity: 0; }
+        50%      { opacity: 0.12; filter: blur(8px); }
+      }
+
+      .card h2 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        letter-spacing: -0.005em;
+      }
+      .card.error h2 { color: var(--err); }
+      .card.error { border-color: rgba(247, 118, 142, 0.3); }
+
+      /* Provider avatars */
+      .avatar {
+        display: inline-grid;
+        place-items: center;
+        width: 22px; height: 22px;
+        border-radius: 7px;
+        font-size: 12px;
+        font-weight: 700;
+        flex-shrink: 0;
+        line-height: 1;
+        letter-spacing: -0.02em;
+      }
+      .avatar-chatgpt { background: var(--chatgpt); color: #fff; }
+      .avatar-claude  { background: var(--claude);  color: #fff; }
+      .avatar-grok    { background: #1a1a1a; color: #fff; border: 1px solid var(--border-strong); }
+      .avatar-gemini  { background: linear-gradient(135deg, var(--gemini-1), var(--gemini-2)); color: #fff; }
+      .avatar-summary { background: linear-gradient(135deg, var(--summary-1), var(--summary-2)); color: #fff; }
+
+      /* Status indicator that sits to the right of the title */
+      .status-slot {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+      }
+
+      /* Retry button — only visible when the card is settled (not streaming),
+         and only on the latest turn. */
+      .retry-btn {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        border-radius: 6px;
+        width: 26px; height: 26px;
+        padding: 0;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+        margin-left: 4px;
+      }
+      .card:not(.streaming) .retry-btn { display: inline-flex; }
+      .turn.past .retry-btn { display: none; }
+      .retry-btn:hover:not(:disabled) {
+        color: var(--text);
+        border-color: var(--accent);
+        background: var(--panel-2);
+      }
+      .retry-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .retry-btn svg {
+        width: 13px; height: 13px;
+      }
+      .card .body {
+        font-size: 14px;
+        line-height: 1.6;
+        color: var(--text);
+        word-wrap: break-word;
+        overflow-wrap: anywhere;
+      }
+      .card .body.empty { color: var(--muted); font-style: italic; opacity: 0.7; }
+      .card .meta {
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border);
+        font-size: 11px;
+        color: var(--muted);
+        display: flex;
+        gap: 12px;
+        font-variant-numeric: tabular-nums;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-weight: 500;
+      }
+      .card .meta .cost { color: var(--text); font-weight: 600; }
+      .card .meta .model { font-style: normal; opacity: 0.8; }
+      .turn-total {
+        margin-top: 8px;
+        text-align: right;
+        font-size: 12px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+      }
+      .turn-total .cost { color: var(--text); font-weight: 600; }
+
+      /* Markdown styles inside .body */
+      .body p { margin: 0 0 12px; }
+      .body p:last-child { margin-bottom: 0; }
+      .body h1, .body h2, .body h3, .body h4 {
+        margin: 16px 0 8px;
+        font-weight: 600;
+        line-height: 1.3;
+      }
+      .body h1 { font-size: 18px; }
+      .body h2 { font-size: 16px; color: inherit; display: block; }
+      .body h3 { font-size: 15px; }
+      .body ul, .body ol { margin: 0 0 12px; padding-left: 22px; }
+      .body li { margin-bottom: 4px; }
+      .body code {
+        background: #0a0c11;
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-size: 0.9em;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .body pre {
+        background: #0a0c11;
+        padding: 12px;
+        border-radius: 6px;
+        overflow-x: auto;
+        margin: 0 0 12px;
+      }
+      .body pre code { background: transparent; padding: 0; font-size: 13px; }
+      .body blockquote {
+        border-left: 3px solid var(--border);
+        padding-left: 12px;
+        margin: 0 0 12px;
+        color: var(--muted);
+      }
+      .body table { border-collapse: collapse; margin: 0 0 12px; }
+      .body th, .body td {
+        border: 1px solid var(--border);
+        padding: 6px 10px;
+        font-size: 13px;
+      }
+      .body th { background: #0a0c11; }
+      .body a { color: var(--accent); }
+
+      .spinner {
+        display: inline-block;
+        width: 12px; height: 12px;
+        border: 2px solid var(--border-strong);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+      .dot {
+        display: inline-block;
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+      .dot.ok {
+        background: var(--ok);
+        box-shadow: 0 0 8px rgba(158, 206, 106, 0.5);
+      }
+      .dot.err {
+        background: var(--err);
+        box-shadow: 0 0 8px rgba(247, 118, 142, 0.5);
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .empty-state {
+        text-align: center;
+        color: var(--muted);
+        font-size: 14px;
+        padding: 80px 20px 40px;
+        line-height: 1.6;
+      }
+      .empty-state strong {
+        display: block;
+        font-size: 18px;
+        color: var(--text);
+        margin-bottom: 8px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .empty-state .providers {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 20px;
+      }
+      .empty-state .providers .avatar {
+        width: 32px; height: 32px;
+        border-radius: 10px;
+        font-size: 14px;
+      }
+
+      @media (max-width: 880px) {
+        .sidebar { display: none; }
+        .prompt-bar { left: 0; }
+      }
+      @media (max-width: 720px) {
+        .grid { grid-template-columns: 1fr; }
+        button.send { min-height: 48px; padding: 12px 20px; }
+        .prompt-row { flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="logo">
+        <span class="logo-mark">M</span>
+        <span>Multi-LLM Chat</span>
+      </span>
+      <span class="sub">ChatGPT · Claude · Grok · Gemini + synthesis</span>
+      <button class="new-btn" id="export-btn" title="Download this conversation as Markdown">
+        Export
+      </button>
+      <span class="total-badge" id="rate-badge" title="Requests left in the current window" style="display:none">
+        <span class="amount" id="rate-amount">—</span> left
+      </span>
+      <span class="total-badge" id="total-badge" title="Estimated total cost this conversation">
+        Total: <span class="amount" id="total-amount">$0.0000</span>
+      </span>
+    </header>
+    <div class="app">
+      <aside class="sidebar">
+        <button class="new-conv-btn" id="new-conv-btn">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 3v10M3 8h10" />
+          </svg>
+          New chat
+        </button>
+        <div class="sidebar-section">Conversations</div>
+        <ul class="conv-list" id="conv-list"></ul>
+      </aside>
+      <main>
+        <div class="system-bar" id="system-bar">
+          <div class="system-display" id="system-display">
+            <span class="system-icon">✱</span>
+            <span class="system-text empty" id="system-text">Set conversation behavior — click to add a steering prompt</span>
+          </div>
+        </div>
+        <div id="conversation">
+          <div class="empty-state">
+            <strong>Ask a question to start a conversation.</strong>
+            All four models answer in parallel; Claude then synthesizes them.
+            Follow-up turns include the prior conversation so each model can build
+            on its own previous answers.
+            <div class="providers">
+              <span class="avatar avatar-chatgpt">G</span>
+              <span class="avatar avatar-claude">C</span>
+              <span class="avatar avatar-grok">𝕏</span>
+              <span class="avatar avatar-gemini">✦</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div class="prompt-bar">
+      <form id="form" class="prompt-row">
+        <textarea
+          id="prompt"
+          placeholder="Ask anything — Ctrl+Enter to send"
+          rows="1"
+          required
+        ></textarea>
+        <button type="submit" class="send" id="submit">
+          Send
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 8h10M9 4l4 4-4 4" />
+          </svg>
+        </button>
+      </form>
+    </div>
+
+    <script>
+      const MODELS = ["ChatGPT", "Claude", "Grok", "Gemini"];
+      const conversationEl = document.getElementById("conversation");
+      const form = document.getElementById("form");
+      const promptEl = document.getElementById("prompt");
+      const submitBtn = document.getElementById("submit");
+      const newBtn = document.getElementById("new-btn");
+      const totalAmountEl = document.getElementById("total-amount");
+
+      // Running session cost (sum of all turn totals).
+      let sessionTotal = 0;
+      let sessionHasUnknown = false;
+
+      function fmtCost(v) {
+        if (v == null) return "?";
+        if (v < 0.01) return "$" + v.toFixed(5);
+        if (v < 1) return "$" + v.toFixed(4);
+        return "$" + v.toFixed(2);
+      }
+      function fmtTokens(inT, outT) {
+        return `${inT}→${outT} tok`;
+      }
+      function updateSessionTotal() {
+        totalAmountEl.textContent =
+          (sessionHasUnknown ? "≥" : "") + fmtCost(sessionTotal);
+      }
+
+      marked.setOptions({ gfm: true, breaks: true });
+
+      // ---- Storage layer ----------------------------------------------------
+      // localStorage shape (key: "multi-llm-chats:v1"):
+      //   { conversations: [Conv...], currentId: string|null }
+      //
+      // Each Conv is:
+      //   { id, title, createdAt, updatedAt,
+      //     messages: [
+      //       {role: "user",      content: "..."},
+      //       {role: "assistant", answers: {...}, summary: "...",
+      //          meta: {ChatGPT: {cost, input_tokens, output_tokens, model_id}, ...},
+      //          turnCost: number, turnHasUnknown: bool},
+      //     ],
+      //     totalCost: number, hasUnknown: bool }
+      const STORAGE_KEY = "multi-llm-chats:v1";
+
+      function loadStore() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return { conversations: [], currentId: null };
+          const parsed = JSON.parse(raw);
+          return {
+            conversations: parsed.conversations || [],
+            currentId: parsed.currentId || null,
+          };
+        } catch {
+          return { conversations: [], currentId: null };
+        }
+      }
+      function saveStore() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        } catch (e) {
+          console.warn("localStorage save failed", e);
+        }
+      }
+      function genConvId() {
+        return crypto.randomUUID
+          ? crypto.randomUUID()
+          : `c_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      }
+      function genTitle(messages) {
+        const first = messages.find((m) => m.role === "user");
+        if (!first) return "New chat";
+        const text = (first.content || "").trim().replace(/\s+/g, " ");
+        return text.length > 48 ? text.slice(0, 48) + "…" : text || "New chat";
+      }
+      function formatRelativeTime(ts) {
+        const diffSec = (Date.now() - ts) / 1000;
+        if (diffSec < 60) return "just now";
+        if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+        if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+        if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`;
+        return new Date(ts).toLocaleDateString();
+      }
+
+      const store = loadStore();
+      let currentConv = null; // The active Conv object, or null for empty.
+
+      // ---- DOM refs ---------------------------------------------------------
+      const sidebarListEl = document.getElementById("conv-list");
+      const newConvBtn = document.getElementById("new-conv-btn");
+      const exportBtn = document.getElementById("export-btn");
+      const systemBarEl = document.getElementById("system-bar");
+      const systemDisplayEl = document.getElementById("system-display");
+      const systemTextEl = document.getElementById("system-text");
+      const rateBadgeEl = document.getElementById("rate-badge");
+      const rateAmountEl = document.getElementById("rate-amount");
+
+      // Read-only check of the server's per-IP rate limit. Hidden locally
+      // (where the limit is set high enough to be effectively unlimited).
+      async function refreshRateLimit() {
+        try {
+          const res = await fetch("/api/rate_limit");
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.limit > 50) {
+            rateBadgeEl.style.display = "none";
+            return;
+          }
+          rateBadgeEl.style.display = "";
+          rateAmountEl.textContent = `${data.remaining}/${data.limit}`;
+          if (data.remaining === 0 && data.resets_in > 0) {
+            const mins = Math.ceil(data.resets_in / 60);
+            rateBadgeEl.title = `Quota exhausted — resets in ~${mins} min`;
+            rateBadgeEl.style.color = "var(--err)";
+          } else if (data.resets_in > 0) {
+            const mins = Math.ceil(data.resets_in / 60);
+            rateBadgeEl.title = `${data.remaining} requests left. Quota resets in ~${mins} min.`;
+            rateBadgeEl.style.color = "";
+          } else {
+            rateBadgeEl.title = `${data.remaining} requests remaining`;
+            rateBadgeEl.style.color = "";
+          }
+        } catch (e) {
+          // Silent — non-critical.
+        }
+      }
+
+      // Pre-conversation system prompt — used when there's no currentConv yet.
+      let pendingSystemPrompt = "";
+
+      function getCurrentSystem() {
+        return currentConv ? (currentConv.systemPrompt || "") : pendingSystemPrompt;
+      }
+      function setCurrentSystem(text) {
+        const clean = (text || "").trim();
+        if (currentConv) {
+          if (clean) currentConv.systemPrompt = clean;
+          else delete currentConv.systemPrompt;
+          saveStore();
+        } else {
+          pendingSystemPrompt = clean;
+        }
+      }
+
+      function renderSystemBar() {
+        // Always render the *display* mode here. Edit mode is set up inline
+        // when the user clicks the bar.
+        const text = getCurrentSystem();
+        systemBarEl.classList.toggle("has-prompt", !!text);
+        systemBarEl.innerHTML = `
+          <div class="system-display" id="system-display">
+            <span class="system-icon">✱</span>
+            <span class="system-text ${text ? "" : "empty"}">${
+              text
+                ? escapeHtml(text)
+                : "Set conversation behavior — click to add a steering prompt"
+            }</span>
+          </div>`;
+        systemBarEl.querySelector(".system-display").addEventListener("click", enterSystemEditMode);
+      }
+
+      function enterSystemEditMode() {
+        const current = getCurrentSystem();
+        systemBarEl.innerHTML = `
+          <div class="system-edit-form">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <span class="system-icon">✱</span>
+              <strong>Conversation behavior</strong>
+            </div>
+            <textarea id="system-input" placeholder="e.g. &quot;You are a strict code reviewer. Focus on correctness, edge cases, and clarity. Be terse.&quot;">${escapeHtml(current)}</textarea>
+            <div class="hint">Applied to all four models for every turn in this conversation.</div>
+            <div class="actions">
+              <button type="button" class="danger" id="sys-clear">Clear</button>
+              <button type="button" id="sys-cancel">Cancel</button>
+              <button type="button" class="primary" id="sys-save">Save</button>
+            </div>
+          </div>`;
+        const ta = document.getElementById("system-input");
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+
+        document.getElementById("sys-save").addEventListener("click", () => {
+          setCurrentSystem(ta.value);
+          renderSystemBar();
+        });
+        document.getElementById("sys-cancel").addEventListener("click", renderSystemBar);
+        document.getElementById("sys-clear").addEventListener("click", () => {
+          setCurrentSystem("");
+          renderSystemBar();
+        });
+        // Cmd/Ctrl+Enter to save inside the system editor.
+        ta.addEventListener("keydown", (e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            setCurrentSystem(ta.value);
+            renderSystemBar();
+          }
+          if (e.key === "Escape") renderSystemBar();
+        });
+      }
+
+      // Initial wiring (display mode).
+      systemDisplayEl.addEventListener("click", enterSystemEditMode);
+
+      // ---- Live-turn state (per streaming turn) ----------------------------
+      // currentConv.messages is the source of truth.  liveTurn is the DOM
+      // section for the most-recent assistant turn (needed by retry).
+      let liveTurn = null;
+      const buffers = {};
+      const dirty = new Set();
+      let rafScheduled = false;
+      // Per-card meta captured during streaming, used to persist after commit.
+      const currentMeta = {};
+
+      function renderMarkdown(text) {
+        return DOMPurify.sanitize(marked.parse(text));
+      }
+
+      function scheduleRender() {
+        if (rafScheduled || !liveTurn) return;
+        rafScheduled = true;
+        requestAnimationFrame(() => {
+          rafScheduled = false;
+          for (const slot of dirty) {
+            const el = liveTurn.elements[slot];
+            if (el) {
+              el.body.className = "body";
+              el.body.innerHTML = renderMarkdown(buffers[slot] || "");
+            }
+          }
+          dirty.clear();
+        });
+      }
+
+      // Provider visual config: CSS class, avatar glyph, avatar class.
+      const PROVIDER_META = {
+        ChatGPT: { cls: "model-chatgpt", glyph: "G",  avatar: "avatar-chatgpt" },
+        Claude:  { cls: "model-claude",  glyph: "C",  avatar: "avatar-claude"  },
+        Grok:    { cls: "model-grok",    glyph: "𝕏",  avatar: "avatar-grok"    },
+        Gemini:  { cls: "model-gemini",  glyph: "✦",  avatar: "avatar-gemini"  },
+        Summary: { cls: "summary",       glyph: "✦",  avatar: "avatar-summary" },
+      };
+
+      function setHeading(slot, status) {
+        if (!liveTurn) return;
+        const el = liveTurn.elements[slot];
+        if (!el) return;
+        const card = el.card;
+        const statusSlot = card.querySelector(".status-slot");
+        if (!statusSlot) return;
+
+        statusSlot.innerHTML = "";
+        const make = (cls) => Object.assign(document.createElement("span"), { className: cls });
+
+        if (status === "loading") {
+          statusSlot.appendChild(make("spinner"));
+          card.classList.add("streaming");
+        } else if (status === "ok") {
+          statusSlot.appendChild(make("dot ok"));
+          card.classList.remove("streaming");
+        } else if (status === "error") {
+          statusSlot.appendChild(make("dot err"));
+          card.classList.add("error");
+          card.classList.remove("streaming");
+        }
+      }
+
+      function appendUserTurn(parent, content) {
+        const div = document.createElement("div");
+        div.className = "user-bubble";
+        div.innerHTML = `<span class="label">You</span>${escapeHtml(content)}`;
+        parent.appendChild(div);
+        return div;
+      }
+
+      function escapeHtml(s) {
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function appendAssistantTurn() {
+        // Creates the 2x2 grid + summary card. Returns refs we can update.
+        const turn = document.createElement("div");
+        turn.className = "turn-assistant";
+        const grid = document.createElement("div");
+        grid.className = "grid";
+        turn.appendChild(grid);
+
+        const buildCard = (slot, label) => {
+          const meta = PROVIDER_META[slot];
+          const card = document.createElement("div");
+          card.className = `card ${meta.cls} streaming`;
+          card.innerHTML = `
+            <h2>
+              <span class="avatar ${meta.avatar}">${meta.glyph}</span>
+              <span>${label}</span>
+              <span class="status-slot"><span class="spinner"></span></span>
+              <button class="retry-btn" data-slot="${slot}" title="Retry this card" aria-label="Retry">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2 7a6 6 0 0 1 10.5-3.5L14 5" />
+                  <path d="M14 2v3h-3" />
+                  <path d="M14 9a6 6 0 0 1-10.5 3.5L2 11" />
+                  <path d="M2 14v-3h3" />
+                </svg>
+              </button>
+            </h2>
+            <div class="body empty">Waiting…</div>`;
+          return card;
+        };
+
+        const elements = {};
+        for (const name of MODELS) {
+          const card = buildCard(name, name);
+          grid.appendChild(card);
+          elements[name] = { card, body: card.querySelector(".body") };
+        }
+
+        const summaryCard = buildCard("Summary", "Synthesis · Claude");
+        turn.appendChild(summaryCard);
+        elements["Summary"] = {
+          card: summaryCard,
+          body: summaryCard.querySelector(".body"),
+        };
+
+        conversationEl.appendChild(turn);
+        return { root: turn, elements };
+      }
+
+      function startNewTurnSection() {
+        // Dim previous turns.
+        for (const child of conversationEl.querySelectorAll(".turn")) {
+          child.classList.add("past");
+        }
+        const turnWrap = document.createElement("div");
+        turnWrap.className = "turn";
+        conversationEl.appendChild(turnWrap);
+        return turnWrap;
+      }
+
+      function handleEvent(evt) {
+        if (!liveTurn) return;
+        switch (evt.type) {
+          case "start": {
+            buffers[evt.model] = "";
+            setHeading(evt.model, "loading");
+            liveTurn.elements[evt.model].body.className = "body empty";
+            liveTurn.elements[evt.model].body.textContent = "…";
+            break;
+          }
+          case "delta": {
+            buffers[evt.model] = (buffers[evt.model] || "") + evt.text;
+            dirty.add(evt.model);
+            scheduleRender();
+            break;
+          }
+          case "done": {
+            setHeading(evt.model, "ok");
+            setMeta(evt.model, evt);
+            currentMeta[evt.model] = {
+              cost: evt.cost,
+              input_tokens: evt.input_tokens,
+              output_tokens: evt.output_tokens,
+              model_id: evt.model_id,
+            };
+            dirty.add(evt.model);
+            scheduleRender();
+            break;
+          }
+          case "error": {
+            buffers[evt.model] = evt.error;
+            setHeading(evt.model, "error");
+            dirty.add(evt.model);
+            scheduleRender();
+            break;
+          }
+          case "summary_start": {
+            buffers["Summary"] = "";
+            setHeading("Summary", "loading");
+            liveTurn.elements["Summary"].body.className = "body empty";
+            liveTurn.elements["Summary"].body.textContent = "Synthesizing…";
+            break;
+          }
+          case "summary_delta": {
+            buffers["Summary"] = (buffers["Summary"] || "") + evt.text;
+            dirty.add("Summary");
+            scheduleRender();
+            break;
+          }
+          case "summary_done": {
+            setHeading("Summary", "ok");
+            setMeta("Summary", evt);
+            currentMeta["Summary"] = {
+              cost: evt.cost,
+              input_tokens: evt.input_tokens,
+              output_tokens: evt.output_tokens,
+              model_id: evt.model_id,
+            };
+            dirty.add("Summary");
+            scheduleRender();
+            break;
+          }
+          case "summary_error": {
+            buffers["Summary"] = evt.error;
+            setHeading("Summary", "error");
+            dirty.add("Summary");
+            scheduleRender();
+            break;
+          }
+          case "turn_total": {
+            // Cumulative across the original run + any retries for this turn.
+            if (liveTurn) {
+              liveTurn.totalCost = (liveTurn.totalCost || 0) + (evt.cost || 0);
+              if (evt.has_unknown) liveTurn.hasUnknown = true;
+
+              let line = liveTurn.root.querySelector(".turn-total");
+              if (!line) {
+                line = document.createElement("div");
+                line.className = "turn-total";
+                liveTurn.root.appendChild(line);
+              }
+              const prefix = liveTurn.hasUnknown ? "≥" : "";
+              line.innerHTML =
+                `Turn total: <span class="cost">${prefix}${fmtCost(liveTurn.totalCost)}</span>`;
+            }
+            sessionTotal += evt.cost || 0;
+            if (evt.has_unknown) sessionHasUnknown = true;
+            updateSessionTotal();
+            break;
+          }
+        }
+      }
+
+      function setMeta(slot, evt) {
+        if (!liveTurn) return;
+        const card = liveTurn.elements[slot]?.card;
+        if (!card) return;
+        const existing = card.querySelector(".meta");
+        if (existing) existing.remove();
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.innerHTML = `
+          <span class="cost">${fmtCost(evt.cost)}</span>
+          <span>${fmtTokens(evt.input_tokens || 0, evt.output_tokens || 0)}</span>
+          <span class="model">${evt.model_id || ""}</span>`;
+        card.appendChild(meta);
+      }
+
+      async function postSSE(url, body, signal) {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal,
+        });
+        if (!res.ok || !res.body) {
+          if (res.status === 429) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.detail || "Rate limit reached. Try again later.");
+          }
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split("\n\n");
+            buffer = parts.pop() ?? "";
+            for (const part of parts) {
+              if (!part.startsWith("data:")) continue;
+              const payload = part.slice(5).trim();
+              if (!payload) continue;
+              try {
+                handleEvent(JSON.parse(payload));
+              } catch (e) {
+                console.warn("Bad SSE payload", payload, e);
+              }
+            }
+          }
+        } catch (err) {
+          // Surface AbortError to the caller so it can clean up; suppress here.
+          if (err.name !== "AbortError") throw err;
+        }
+      }
+
+      const streamRequest = (messages, signal) =>
+        postSSE("/api/ask", { messages, system: getCurrentSystem() || null }, signal);
+
+      // Retry a single card.  Backend re-runs the picked provider (if any)
+      // and always re-runs the summary so it reflects updated answers.
+      async function retryCard(slot) {
+        if (currentAbort) return; // already streaming
+        if (!liveTurn) return;
+        // The retry only makes sense on the latest finished turn.
+        if (liveTurn.root.parentElement?.classList.contains("past")) return;
+
+        // Disable all retry buttons on this turn while in flight.
+        for (const b of liveTurn.root.querySelectorAll(".retry-btn")) {
+          b.disabled = true;
+        }
+
+        // current_answers must reflect what's on screen — used by Summary retry.
+        const currentAnswers = {};
+        for (const m of MODELS) currentAnswers[m] = buffers[m] || "";
+
+        // Build the conversation history the original /ask saw: everything
+        // up to and including the latest user prompt (drop the trailing
+        // assistant entry — backend regenerates that).
+        if (!currentConv) return;
+        const history = currentConv.messages
+          .map((m) =>
+            m.role === "user"
+              ? { role: "user", content: m.content }
+              : { role: "assistant", answers: m.answers }
+          )
+          .filter((m, i, arr) =>
+            !(m.role === "assistant" && i === arr.length - 1)
+          );
+
+        currentAbort = new AbortController();
+        setStreamingState(true);
+        try {
+          await postSSE(
+            "/api/retry",
+            {
+              messages: history,
+              slot,
+              current_answers: currentAnswers,
+              system: getCurrentSystem() || null,
+            },
+            currentAbort.signal
+          );
+          commitTurn();
+        } catch (err) {
+          if (err.name !== "AbortError") console.error("retry failed", err);
+        } finally {
+          currentAbort = null;
+          setStreamingState(false);
+          for (const b of liveTurn.root.querySelectorAll(".retry-btn")) {
+            b.disabled = false;
+          }
+          refreshRateLimit();
+        }
+      }
+
+      // Event delegation for retry clicks.
+      conversationEl.addEventListener("click", (e) => {
+        const btn = e.target.closest(".retry-btn");
+        if (!btn) return;
+        retryCard(btn.dataset.slot);
+      });
+
+      function clearEmptyState() {
+        const empty = conversationEl.querySelector(".empty-state");
+        if (empty) empty.remove();
+      }
+
+      function emptyStateHTML() {
+        return `
+          <div class="empty-state">
+            <strong>Ask a question to start a conversation.</strong>
+            All four models answer in parallel; Claude then synthesizes them.
+            Follow-up turns include the prior conversation so each model can build
+            on its own previous answers.
+            <div class="providers">
+              <span class="avatar avatar-chatgpt">G</span>
+              <span class="avatar avatar-claude">C</span>
+              <span class="avatar avatar-grok">𝕏</span>
+              <span class="avatar avatar-gemini">✦</span>
+            </div>
+          </div>`;
+      }
+
+      // ---- Conversation operations ----------------------------------------
+
+      function startEmptyConversation() {
+        currentConv = null;
+        store.currentId = null;
+        pendingSystemPrompt = "";
+        saveStore();
+        liveTurn = null;
+        conversationEl.innerHTML = emptyStateHTML();
+        sessionTotal = 0;
+        sessionHasUnknown = false;
+        updateSessionTotal();
+        promptEl.value = "";
+        autosize();
+        renderSidebar();
+        renderSystemBar();
+        promptEl.focus();
+      }
+
+      function switchToConversation(id) {
+        if (currentAbort) return; // mid-stream
+        const conv = store.conversations.find((c) => c.id === id);
+        if (!conv) return;
+        currentConv = conv;
+        store.currentId = id;
+        pendingSystemPrompt = "";
+        saveStore();
+        restoreConversationDOM(conv);
+        renderSidebar();
+        renderSystemBar();
+      }
+
+      function deleteConversation(id) {
+        const idx = store.conversations.findIndex((c) => c.id === id);
+        if (idx < 0) return;
+        const wasCurrent = store.currentId === id;
+        store.conversations.splice(idx, 1);
+        if (wasCurrent) {
+          store.currentId = null;
+          currentConv = null;
+          conversationEl.innerHTML = emptyStateHTML();
+          sessionTotal = 0;
+          sessionHasUnknown = false;
+          updateSessionTotal();
+        }
+        saveStore();
+        renderSidebar();
+      }
+
+      function commitTurn() {
+        // Called after a turn (or retry) finishes streaming. Persists
+        // currentConv to localStorage. Creates the Conv on first commit.
+        if (!liveTurn) return;
+        const answers = {};
+        for (const m of MODELS) answers[m] = buffers[m] || "";
+        const summary = buffers["Summary"] || "";
+
+        const assistantEntry = {
+          role: "assistant",
+          answers,
+          summary,
+          meta: { ...currentMeta },
+          turnCost: liveTurn.totalCost || 0,
+          turnHasUnknown: !!liveTurn.hasUnknown,
+        };
+
+        if (!currentConv) {
+          // First message in this conversation — bootstrap a Conv entry.
+          currentConv = {
+            id: genConvId(),
+            title: "New chat",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            messages: [],
+            totalCost: 0,
+            hasUnknown: false,
+          };
+          store.conversations.unshift(currentConv);
+          store.currentId = currentConv.id;
+        }
+
+        // Pending user message (added at submit time) is already at the end
+        // unless this is a retry. Detect & replace the trailing assistant.
+        const lastIdx = currentConv.messages.length - 1;
+        if (lastIdx >= 0 && currentConv.messages[lastIdx].role === "assistant") {
+          // Retry case — replace the last assistant entry.
+          currentConv.messages[lastIdx] = assistantEntry;
+        } else {
+          currentConv.messages.push(assistantEntry);
+        }
+        currentConv.updatedAt = Date.now();
+        currentConv.totalCost = sessionTotal;
+        currentConv.hasUnknown = sessionHasUnknown;
+        currentConv.title = genTitle(currentConv.messages);
+
+        // Move this conversation to the top of the list.
+        const idx = store.conversations.indexOf(currentConv);
+        if (idx > 0) {
+          store.conversations.splice(idx, 1);
+          store.conversations.unshift(currentConv);
+        }
+
+        saveStore();
+        renderSidebar();
+      }
+
+      function renderSidebar() {
+        sidebarListEl.innerHTML = "";
+        if (store.conversations.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "conv-empty";
+          empty.textContent = "No saved conversations yet.";
+          sidebarListEl.appendChild(empty);
+          return;
+        }
+        for (const conv of store.conversations) {
+          const li = document.createElement("li");
+          li.className = "conv-item" + (conv.id === store.currentId ? " active" : "");
+          li.dataset.id = conv.id;
+          li.innerHTML = `
+            <span class="conv-title" title="${escapeAttr(conv.title)}">${escapeHtml(conv.title)}</span>
+            <span class="conv-actions">
+              <button class="icon-btn" data-action="export" title="Export as Markdown" aria-label="Export">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8 2v8M5 7l3 3 3-3M3 13h10" />
+                </svg>
+              </button>
+              <button class="icon-btn danger" data-action="delete" title="Delete conversation" aria-label="Delete">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 4h10M6 4V2h4v2M5 4l1 10h4l1-10" />
+                </svg>
+              </button>
+            </span>`;
+          sidebarListEl.appendChild(li);
+        }
+      }
+
+      function escapeAttr(s) {
+        return String(s).replace(/"/g, "&quot;").replace(/&/g, "&amp;");
+      }
+
+      // ---- Restore a saved conversation into the DOM ----------------------
+
+      function restoreConversationDOM(conv) {
+        conversationEl.innerHTML = "";
+        liveTurn = null;
+        sessionTotal = conv.totalCost || 0;
+        sessionHasUnknown = !!conv.hasUnknown;
+        updateSessionTotal();
+
+        // Iterate user/assistant pairs.
+        let i = 0;
+        while (i < conv.messages.length) {
+          const userMsg = conv.messages[i];
+          const asstMsg = conv.messages[i + 1];
+          if (userMsg?.role !== "user") {
+            i++;
+            continue;
+          }
+          const turnWrap = document.createElement("div");
+          turnWrap.className = "turn past";
+          conversationEl.appendChild(turnWrap);
+          appendUserTurn(turnWrap, userMsg.content);
+          if (asstMsg?.role === "assistant") {
+            liveTurn = appendAssistantTurn();
+            turnWrap.appendChild(liveTurn.root);
+            populateAssistantTurn(liveTurn, asstMsg);
+            i += 2;
+          } else {
+            i += 1;
+          }
+        }
+
+        // The most-recent turn isn't "past" — it's the one retry can target.
+        const turns = conversationEl.querySelectorAll(".turn");
+        if (turns.length) turns[turns.length - 1].classList.remove("past");
+
+        // Populate buffers/meta from the last assistant turn so retry has state.
+        const lastAsst = [...conv.messages].reverse().find((m) => m.role === "assistant");
+        if (lastAsst) {
+          for (const m of MODELS) buffers[m] = lastAsst.answers[m] || "";
+          buffers["Summary"] = lastAsst.summary || "";
+          for (const k of Object.keys(currentMeta)) delete currentMeta[k];
+          Object.assign(currentMeta, lastAsst.meta || {});
+        }
+      }
+
+      function populateAssistantTurn(turn, msg) {
+        // Fill in cards from a saved assistant message — no streaming.
+        for (const slot of MODELS) {
+          const el = turn.elements[slot];
+          el.body.className = "body";
+          el.body.innerHTML = renderMarkdown(msg.answers[slot] || "");
+          el.card.classList.remove("streaming");
+          setHeading(slot, "ok");
+          if (msg.meta && msg.meta[slot]) setMeta(slot, msg.meta[slot]);
+        }
+        const sum = turn.elements["Summary"];
+        sum.body.className = "body";
+        sum.body.innerHTML = renderMarkdown(msg.summary || "");
+        sum.card.classList.remove("streaming");
+        setHeading("Summary", "ok");
+        if (msg.meta && msg.meta["Summary"]) setMeta("Summary", msg.meta["Summary"]);
+
+        if (msg.turnCost != null) {
+          turn.totalCost = msg.turnCost;
+          turn.hasUnknown = !!msg.turnHasUnknown;
+          const line = document.createElement("div");
+          line.className = "turn-total";
+          const prefix = msg.turnHasUnknown ? "≥" : "";
+          line.innerHTML =
+            `Turn total: <span class="cost">${prefix}${fmtCost(msg.turnCost)}</span>`;
+          turn.root.appendChild(line);
+        }
+      }
+
+      // ---- Export ---------------------------------------------------------
+
+      function exportConvAsMarkdown(conv) {
+        if (!conv) return;
+        const lines = [`# ${conv.title}`, ""];
+        lines.push(`_Created: ${new Date(conv.createdAt).toLocaleString()}_`);
+        lines.push(`_Estimated cost: ${fmtCost(conv.totalCost || 0)}${conv.hasUnknown ? " (incomplete pricing)" : ""}_`);
+        lines.push("");
+        for (let i = 0; i < conv.messages.length; i++) {
+          const msg = conv.messages[i];
+          if (msg.role === "user") {
+            lines.push("---", "", "## You", "", msg.content, "");
+          } else {
+            lines.push("## Assistant", "");
+            for (const m of MODELS) {
+              lines.push(`### ${m}`, "", msg.answers[m] || "_(no response)_", "");
+            }
+            lines.push(`### Synthesis (Claude)`, "", msg.summary || "_(no summary)_", "");
+            if (msg.turnCost != null) {
+              lines.push(`_Turn cost: ${fmtCost(msg.turnCost)}_`, "");
+            }
+          }
+        }
+        const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const safeName = (conv.title || "chat").replace(/[^a-z0-9-_ ]/gi, "").trim().slice(0, 60) || "chat";
+        a.download = `${safeName}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      // ---- Wire up UI events ----------------------------------------------
+
+      newConvBtn.addEventListener("click", () => {
+        if (currentAbort) return; // mid-stream
+        startEmptyConversation();
+      });
+
+      exportBtn.addEventListener("click", () => {
+        if (currentConv) exportConvAsMarkdown(currentConv);
+      });
+
+      sidebarListEl.addEventListener("click", (e) => {
+        const item = e.target.closest(".conv-item");
+        if (!item) return;
+        const id = item.dataset.id;
+        const actionBtn = e.target.closest("[data-action]");
+        if (actionBtn) {
+          e.stopPropagation();
+          const conv = store.conversations.find((c) => c.id === id);
+          if (actionBtn.dataset.action === "delete") {
+            if (confirm(`Delete "${conv.title}"? This can't be undone.`)) {
+              deleteConversation(id);
+            }
+          } else if (actionBtn.dataset.action === "export") {
+            exportConvAsMarkdown(conv);
+          }
+          return;
+        }
+        if (id !== store.currentId) switchToConversation(id);
+      });
+
+      // ---- Streaming state (used by Submit + Retry, exposed to Stop) ------
+      let currentAbort = null;
+
+      const SEND_LABEL = `Send
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 8h10M9 4l4 4-4 4" />
+        </svg>`;
+      const STOP_LABEL = `Stop
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+          <rect x="4" y="4" width="8" height="8" rx="1" />
+        </svg>`;
+
+      function setStreamingState(isStreaming) {
+        if (isStreaming) {
+          submitBtn.classList.add("stopping");
+          submitBtn.innerHTML = STOP_LABEL;
+          submitBtn.title = "Stop (Esc)";
+        } else {
+          submitBtn.classList.remove("stopping");
+          submitBtn.innerHTML = SEND_LABEL;
+          submitBtn.title = "Send (Ctrl+Enter)";
+        }
+      }
+
+      function abortIfStreaming() {
+        if (currentAbort) {
+          currentAbort.abort();
+          return true;
+        }
+        return false;
+      }
+
+      // ---- Submit handler -------------------------------------------------
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        // While streaming, the button is "Stop" — clicking aborts.
+        if (abortIfStreaming()) return;
+
+        const prompt = promptEl.value.trim();
+        if (!prompt) return;
+
+        promptEl.value = "";
+        clearEmptyState();
+
+        // Dim the previous turn (now "past") before we create a new one.
+        for (const t of conversationEl.querySelectorAll(".turn")) {
+          t.classList.add("past");
+        }
+
+        // Bootstrap a fresh conversation if needed.
+        if (!currentConv) {
+          currentConv = {
+            id: genConvId(),
+            title: "New chat",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            messages: [],
+            totalCost: 0,
+            hasUnknown: false,
+          };
+          if (pendingSystemPrompt) {
+            currentConv.systemPrompt = pendingSystemPrompt;
+            pendingSystemPrompt = "";
+          }
+          store.conversations.unshift(currentConv);
+          store.currentId = currentConv.id;
+        }
+
+        currentConv.messages.push({ role: "user", content: prompt });
+
+        // Build a new turn in the DOM.
+        const turnWrap = document.createElement("div");
+        turnWrap.className = "turn";
+        conversationEl.appendChild(turnWrap);
+        appendUserTurn(turnWrap, prompt);
+
+        liveTurn = appendAssistantTurn();
+        turnWrap.appendChild(liveTurn.root);
+        for (const m of [...MODELS, "Summary"]) buffers[m] = "";
+        for (const k of Object.keys(currentMeta)) delete currentMeta[k];
+
+        turnWrap.scrollIntoView({ behavior: "smooth", block: "start" });
+
+        currentAbort = new AbortController();
+        setStreamingState(true);
+        try {
+          // Backend wants {role, content} for user and {role, answers} for
+          // assistant — strip the local-only fields (summary, meta, etc.).
+          const serverMessages = currentConv.messages.map((m) =>
+            m.role === "user"
+              ? { role: "user", content: m.content }
+              : { role: "assistant", answers: m.answers }
+          );
+          await streamRequest(serverMessages, currentAbort.signal);
+        } catch (err) {
+          if (err.name !== "AbortError") {
+            setHeading("Summary", "error");
+            liveTurn.elements["Summary"].body.className = "body";
+            liveTurn.elements["Summary"].body.textContent =
+              `Request failed: ${err.message}`;
+          }
+        } finally {
+          currentAbort = null;
+          setStreamingState(false);
+          commitTurn();
+          refreshRateLimit();
+          promptEl.focus();
+        }
+      });
+
+      // Ctrl/Cmd+Enter to submit.
+      promptEl.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          form.requestSubmit();
+        }
+      });
+
+      // Global Esc — abort any in-flight request.
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && currentAbort) {
+          e.preventDefault();
+          currentAbort.abort();
+        }
+      });
+
+      // Auto-grow the textarea up to its CSS max-height.
+      function autosize() {
+        promptEl.style.height = "auto";
+        promptEl.style.height = Math.min(promptEl.scrollHeight, 200) + "px";
+      }
+      promptEl.addEventListener("input", autosize);
+      // Reset after submit (we clear the value).
+      form.addEventListener("submit", () => requestAnimationFrame(autosize));
+
+      // ---- Page-load restoration -----------------------------------------
+      // Restore the last active conversation, or start with an empty one.
+      (function init() {
+        renderSidebar();
+        if (store.currentId) {
+          const conv = store.conversations.find((c) => c.id === store.currentId);
+          if (conv) {
+            currentConv = conv;
+            restoreConversationDOM(conv);
+          }
+        }
+        renderSystemBar();
+        refreshRateLimit();
+      })();
+    </script>
+  </body>
+</html>
