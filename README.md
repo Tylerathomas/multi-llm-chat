@@ -4,11 +4,13 @@ Ask **ChatGPT, Claude, Grok, and Gemini** the same question at once, watch all f
 answers stream in side-by-side, then get a single synthesized answer from Claude that
 reconciles them — flagging where the models agree, disagree, or look wrong.
 
-![screenshot](docs/screenshot.png)
+### 🔗 Live demo: **[multi-llm-chat.fly.dev](https://multi-llm-chat.fly.dev)**
 
-> Replace the image above with your own screenshot (save it to `docs/screenshot.png`).
-> A capture taken mid-stream — with the four cards filling in and the synthesis below —
-> shows the app off best.
+> Live on Fly.io's free tier — scales to zero when idle, so the first request after a
+> quiet spell may take a second or two to wake. Rate-limited to 5 requests/hour per
+> visitor.
+
+![screenshot](docs/screenshot.png)
 
 ---
 
