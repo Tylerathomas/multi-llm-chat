@@ -132,6 +132,35 @@
         font-family: "JetBrains Mono", ui-monospace, monospace;
       }
 
+      /* Hamburger — hidden on desktop, shown on mobile to toggle the drawer */
+      header .menu-btn {
+        display: none;
+        background: transparent;
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        color: var(--text);
+        width: 38px;
+        height: 38px;
+        cursor: pointer;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        padding: 0;
+      }
+      header .menu-btn svg { width: 18px; height: 18px; }
+
+      /* Dim backdrop behind the mobile drawer */
+      .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        z-index: 40;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+      .sidebar-backdrop.show { display: block; opacity: 1; }
+
       /* App layout: sidebar + main */
       .app {
         display: flex;
@@ -730,18 +759,42 @@
       }
 
       @media (max-width: 880px) {
-        .sidebar { display: none; }
+        /* Sidebar becomes a slide-in drawer toggled by the hamburger. */
+        header .menu-btn { display: inline-flex; }
+        header .sub { display: none; }  /* free up header space on phones */
         .prompt-bar { left: 0; }
+        .sidebar {
+          position: fixed;
+          top: 0;
+          left: 0;
+          height: 100vh;
+          width: 280px;
+          z-index: 50;
+          transform: translateX(-100%);
+          transition: transform 0.25s ease;
+          padding-top: 76px;  /* clear the fixed header so "New chat" is visible */
+          box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+        }
+        .sidebar.open { transform: translateX(0); }
       }
       @media (max-width: 720px) {
         .grid { grid-template-columns: 1fr; }
         button.send { min-height: 48px; padding: 12px 20px; }
         .prompt-row { flex-direction: column; }
+        header { gap: 8px; padding: 12px 14px; }
+        header .logo span:last-child { font-size: 15px; white-space: nowrap; }
+        header #export-btn { display: none; }  /* declutter; export is desktop-only */
+        header .total-badge { padding: 4px 9px; font-size: 11px; }
       }
     </style>
   </head>
   <body>
     <header>
+      <button class="menu-btn" id="menu-btn" aria-label="Toggle conversations">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M3 6h18M3 12h18M3 18h18" />
+        </svg>
+      </button>
       <span class="logo">
         <span class="logo-mark">M</span>
         <span>Multi-LLM Chat</span>
@@ -757,8 +810,9 @@
         Total: <span class="amount" id="total-amount">$0.0000</span>
       </span>
     </header>
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
     <div class="app">
-      <aside class="sidebar">
+      <aside class="sidebar" id="sidebar">
         <button class="new-conv-btn" id="new-conv-btn">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M8 3v10M3 8h10" />
@@ -1418,6 +1472,7 @@
         restoreConversationDOM(conv);
         renderSidebar();
         renderSystemBar();
+        closeSidebar();
       }
 
       function deleteConversation(id) {
@@ -1641,9 +1696,28 @@
 
       // ---- Wire up UI events ----------------------------------------------
 
+      // Mobile drawer for the sidebar.
+      const sidebarEl = document.getElementById("sidebar");
+      const menuBtn = document.getElementById("menu-btn");
+      const backdropEl = document.getElementById("sidebar-backdrop");
+      function openSidebar() {
+        sidebarEl.classList.add("open");
+        backdropEl.classList.add("show");
+      }
+      function closeSidebar() {
+        sidebarEl.classList.remove("open");
+        backdropEl.classList.remove("show");
+      }
+      menuBtn.addEventListener("click", () => {
+        if (sidebarEl.classList.contains("open")) closeSidebar();
+        else openSidebar();
+      });
+      backdropEl.addEventListener("click", closeSidebar);
+
       newConvBtn.addEventListener("click", () => {
         if (currentAbort) return; // mid-stream
         startEmptyConversation();
+        closeSidebar();
       });
 
       exportBtn.addEventListener("click", () => {

@@ -14,9 +14,10 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# IDE / editor
+# IDE / editor / local tooling
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 
