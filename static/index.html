@@ -149,17 +149,16 @@
       }
       header .menu-btn svg { width: 18px; height: 18px; }
 
-      /* Dim backdrop behind the mobile drawer */
+      /* Invisible tap-catcher behind the mobile drawer — closes it when you
+         tap outside, without dimming the screen. */
       .sidebar-backdrop {
         display: none;
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.55);
+        background: transparent;
         z-index: 40;
-        opacity: 0;
-        transition: opacity 0.2s ease;
       }
-      .sidebar-backdrop.show { display: block; opacity: 1; }
+      .sidebar-backdrop.show { display: block; }
 
       /* App layout: sidebar + main */
       .app {
