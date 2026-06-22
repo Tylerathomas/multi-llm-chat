@@ -166,7 +166,10 @@
         align-items: stretch;
         min-height: calc(100vh - 65px); /* full viewport minus header */
         position: relative;
-        z-index: 1;
+        /* No z-index here — it would create a stacking context that traps the
+           mobile sidebar's z-index below the root-level drawer backdrop,
+           making the open drawer untappable. Tree order keeps .app above the
+           background glow without it. */
       }
       .sidebar {
         width: 260px;
